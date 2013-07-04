@@ -92,6 +92,7 @@ class GPGBase(object):
                        'import':   _parsers.ImportResult,
                        'list':     _parsers.ListKeys,
                        'sign':     _parsers.Sign,
+                       'certify':  _parsers.Certify,
                        'verify':   _parsers.Verify,
                        'packets':  _parsers.ListPackets }
 
@@ -592,6 +593,8 @@ class GPGBase(object):
         log.debug('recv_keys result: %r', result.__dict__)
         return result
 
+
+
     def _sign_file(self, file, default_key=None, passphrase=None,
                    clearsign=True, detach=False, binary=False):
         """Create a signature for a file.
@@ -635,6 +638,26 @@ class GPGBase(object):
             writer = None
         self._collect_output(proc, result, writer, proc.stdin)
         return result
+
+    def _certify_key(self, keyring, to_sign, key_id, passphrase=None):
+        log.debug("_certify_key():")
+        log.info("Creating certification for key %s" % key_id)
+        args = [ '--default-key', key_id, '--sign-key', to_sign,]
+
+        ## We could use _handle_io here except for the fact that if the
+        ## passphrase is bad, gpg bails and you can't write the message.
+        result = self._result_map['certify'](self)
+        proc = self._open_subprocess(args, passphrase is not None)
+        try:
+            if passphrase:
+                _util._write_passphrase(proc.stdin, passphrase, self._encoding)
+                proc = self._open_subprocess(args, passphrase=True)
+        except IOError as ioe:
+            log.exception("Error writing message: %s" % ioe.message)
+            writer = None
+        self._collect_output(proc, result, writer, proc.stdin)
+        return result
+
 
     def _encrypt(self, data, recipients,
                  default_key=None,
@@ -792,3 +815,11 @@ class GPGBase(object):
                         passphrase=passphrase, binary=True)
         log.debug('GPG.encrypt_file(): Result: %r', result.data)
         return result
+
+class TempGPG(GPG):
+    def __init__(self):
+        self.tmphomedir = tempfile.mkdtemp(prefix=".tmp-gnupg-")
+        gpg = GPG(homedir=self.tmphomedir)
+
+    def __del__(self):
+        shutil.rmtree(self.tmphomedir)
