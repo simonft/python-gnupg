@@ -32,6 +32,7 @@ import encodings
 import os
 import re
 import textwrap
+import tempfile
 
 try:
     from io import StringIO
@@ -42,6 +43,7 @@ except ImportError:
 from .         import _parsers
 from .         import _util
 from ._meta    import GPGBase
+from ._meta    import TempGPG
 from ._parsers import _fix_unsafe
 from ._util    import _is_list_or_tuple
 from ._util    import _is_stream
@@ -189,6 +191,28 @@ class GPG(GPGBase):
                      % (data, type(data)))
             result = None
         return result
+
+    def certify(self, to_sign, **kwargs):
+        """
+        :param str to_sign: the key to sign
+        :param str signing_key: The key to sign with.
+        """
+        if 'signing_key' in kwargs.items():
+            log.info("Signing key '%r' with keyid: %s"
+                     % (data, kwargs['signing_key']))
+            signing_key = kwargs['default_key']
+        else:
+            log.warn("No 'signing_key' given! Using first key on secring.")
+            secret_keys = self.list_keys(secret=True)
+            if len(secret_keys) = 0:
+                # TODO: make this raise an exception
+                return 0
+            signing_key = secret_keys[0].get('keyid')
+        
+        temp_keyring = TempGPG()
+        temp_keyring.import(self.export_keys(signing_key))
+
+        result = _certify_key(tmp_keyring, to_sign, signing_key)
 
     def verify(self, data):
         """Verify the signature on the contents of the string ``data``.
